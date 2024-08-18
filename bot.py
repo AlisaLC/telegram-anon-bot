@@ -13,11 +13,6 @@ app = Client(
     api_id=api_id,
     api_hash=api_hash,
     bot_token=bot_token,
-    proxy={
-        "scheme": "socks5",
-        "hostname": "127.0.0.1",
-        "port": 2080,
-    }
 )
 
 manager = StateManager()
