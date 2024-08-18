@@ -1,1 +1,6 @@
 .env
+.env.local
+
+venv
+__pycache__
+*.session
