@@ -1,6 +1,10 @@
 from asyncio import Lock
+import base64
+import hashlib
 import json
+import os
 import pathlib
+from typing import Union
 
 
 class StateManager:
@@ -9,6 +13,8 @@ class StateManager:
         self.chat_state: dict[int, int] = {}
         self.block_list: dict[int, set[int]] = {}
         self.inbox: dict[int, dict[int, list[int]]] = {}
+        self.hash_index: dict[str, int] = {}
+        self.salt: bytes = None
 
     async def save(self):
         with open('states.json', 'w', encoding='utf-8') as f:
@@ -17,6 +23,10 @@ class StateManager:
             json.dump(self.block_list, f)
         with open('inbox.json', 'w', encoding='utf-8') as f:
             json.dump(self.inbox, f)
+        with open('hashes.json', 'w', encoding='utf-8') as f:
+            json.dump(self.hash_index, f)
+        with open('salt.secret', 'wb') as f:
+            f.write(self.salt)
 
     async def load(self):
         if pathlib.Path('states.json').exists():
@@ -28,6 +38,24 @@ class StateManager:
         if pathlib.Path('inbox.json').exists():
             with open('inbox.json', 'r', encoding='utf-8') as f:
                 self.inbox = json.load(f)
+        if pathlib.Path('hashes.json').exists():
+            with open('hashes.json', 'r', encoding='utf-8') as f:
+                self.hash_index = json.load(f)
+        if pathlib.Path('salt.secret').exists():
+            with open('salt.secret', 'rb') as f:
+                self.salt = f.read()
+        else:
+            self.salt = os.urandom(16)
+
+    async def hash(self, chat_id: int) -> str:
+        input_bytes = str(chat_id).encode() + self.salt
+        hashed = hashlib.sha256(input_bytes).digest()
+        encoded_string = base64.urlsafe_b64encode(hashed).decode('utf-8')[:20]
+        self.hash_index[encoded_string] = chat_id
+        return encoded_string
+
+    async def unhash(self, hashed: str) -> Union[int, None]:
+        return self.hash_index.get(hashed)
 
     async def block(self, reciever_id: int, sender_id: int) -> None:
         if reciever_id not in self.chat_locks:
@@ -69,12 +97,12 @@ class StateManager:
                 return 0, 0
             return len(self.inbox[reciever_id]), sum(len(self.inbox[reciever_id][sender_id]) for sender_id in self.inbox[reciever_id])
 
-    async def get_inbox(self, reciever_id: int) -> tuple[int, list[int]]:
+    async def get_inbox(self, reciever_id: int) -> tuple[Union[int, None], list[int]]:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
             if reciever_id not in self.inbox:
-                return []
+                return None, []
             sender_id = list(self.inbox[reciever_id].keys())[0]
             messages = self.inbox[reciever_id][sender_id]
             del self.inbox[reciever_id][sender_id]
@@ -90,7 +118,7 @@ class StateManager:
                 return False
             return self.chat_state[sender_id] is not None
 
-    async def get_reciever_id(self, sender_id: int) -> int:
+    async def get_reciever_id(self, sender_id: int) -> Union[int, None]:
         if sender_id not in self.chat_locks:
             self.chat_locks[sender_id] = Lock()
         async with self.chat_locks[sender_id]:

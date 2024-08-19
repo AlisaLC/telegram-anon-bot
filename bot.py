@@ -42,15 +42,15 @@ async def start_handler(client, message: types.Message):
         await app.send_message(
             chat_id,
             f"""اینجا می‌تونی با افراد به صورت واقعا ناشناس مکالمه کنی!
-            کافیه رو لینک زیر کلیک کنن تا بتونن باهات به صورت ناشناس حرف بزنن.
-            https://t.me/TruAnonBot?start=chat-{chat_id}""",
+کافیه رو لینک زیر کلیک کنن تا بتونن باهات به صورت ناشناس حرف بزنن.
+https://t.me/TruAnonBot?start=chat-{await manager.hash(chat_id)}""",
             reply_to_message_id=message.id)
         return
     if message.text[7:12] == 'chat-':
         reciever_id = message.text[12:]
-        if not reciever_id.isdigit():
+        reciever_id = await manager.unhash(reciever_id)
+        if reciever_id is None:
             return
-        reciever_id = int(reciever_id)
         if reciever_id == chat_id:
             await app.send_message(
                 chat_id,
@@ -102,7 +102,7 @@ async def block_handler(client, message: types.Message):
                 [
                     types.InlineKeyboardButton(
                         "بلاک",
-                        callback_data=f'block-{await manager.get_reciever_id(chat_id)}'
+                        callback_data=f'block-{await manager.hash(await manager.get_reciever_id(chat_id))}'
                     )
                 ],
             ]
@@ -110,10 +110,14 @@ async def block_handler(client, message: types.Message):
     )
 
 
-@app.on_callback_query(filters.regex(r'^block-\d+$'))
+@app.on_callback_query(filters.regex(r'^block-.+$'))
 async def block_callback_handler(client, query: types.CallbackQuery):
     chat_id = query.message.chat.id
-    sender_id = int(query.data[6:])
+    sender_id = await manager.unhash(query.data[6:])
+    if sender_id is None:
+        return
+    if await manager.is_chatting(sender_id) and await manager.get_reciever_id(sender_id) == chat_id:
+        await app.send_message()
     await manager.block(chat_id, sender_id)
     await app.edit_message_reply_markup(
         chat_id,
@@ -123,7 +127,7 @@ async def block_callback_handler(client, query: types.CallbackQuery):
                 [
                     types.InlineKeyboardButton(
                         "آن‌بلاک",
-                        callback_data=f'unblock-{sender_id}'
+                        callback_data=f'unblock-{await manager.hash(sender_id)}'
                     )
                 ],
             ]
@@ -132,10 +136,12 @@ async def block_callback_handler(client, query: types.CallbackQuery):
     await query.answer("بلاک شد")
 
 
-@app.on_callback_query(filters.regex(r'^unblock-\d+$'))
+@app.on_callback_query(filters.regex(r'^unblock-.+$'))
 async def unblock_callback_handler(client, query: types.CallbackQuery):
     chat_id = query.message.chat.id
-    sender_id = int(query.data[8:])
+    sender_id = await manager.unhash(query.data[8:])
+    if sender_id is None:
+        return
     await manager.block(chat_id, sender_id)
     await app.edit_message_reply_markup(
         chat_id,
@@ -145,7 +151,7 @@ async def unblock_callback_handler(client, query: types.CallbackQuery):
                 [
                     types.InlineKeyboardButton(
                         "بلاک",
-                        callback_data=f'block-{sender_id}'
+                        callback_data=f'block-{await manager.hash(sender_id)}'
                     )
                 ],
             ]
@@ -207,11 +213,17 @@ async def inbox_callback_handler(client, query: types.CallbackQuery):
     sender_id, messages = await manager.get_inbox(chat_id)
     await manager.start_chat(chat_id, sender_id)
     await query.answer("مکالمه شروع شد.")
-    for message_id in messages:
-        await app.copy_message(
-            chat_id=chat_id,
-            from_chat_id=sender_id,
-            message_id=message_id,
+    if messages:
+        for message_id in messages:
+            await app.copy_message(
+                chat_id=chat_id,
+                from_chat_id=sender_id,
+                message_id=message_id,
+            )
+        await app.send_message(
+            sender_id,
+            "مکالمه شما خوانده شد.",
+            reply_to_message_id=messages[-1],
         )
 
 
