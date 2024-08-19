@@ -1,5 +1,6 @@
 from asyncio import Lock
 import json
+import pathlib
 
 
 class StateManager:
@@ -18,12 +19,15 @@ class StateManager:
             json.dump(self.inbox, f)
 
     async def load(self):
-        with open('states.json', 'r', encoding='utf-8') as f:
-            self.chat_state = json.load(f)
-        with open('blocks.json', 'r', encoding='utf-8') as f:
-            self.block_list = json.load(f)
-        with open('inbox.json', 'r', encoding='utf-8') as f:
-            self.inbox = json.load(f)
+        if pathlib.Path('states.json').exists():
+            with open('states.json', 'r', encoding='utf-8') as f:
+                self.chat_state = json.load(f)
+        if pathlib.Path('blocks.json').exists():
+            with open('blocks.json', 'r', encoding='utf-8') as f:
+                self.block_list = json.load(f)
+        if pathlib.Path('inbox.json').exists():
+            with open('inbox.json', 'r', encoding='utf-8') as f:
+                self.inbox = json.load(f)
 
     async def block(self, reciever_id: int, sender_id: int) -> None:
         if reciever_id not in self.chat_locks:
