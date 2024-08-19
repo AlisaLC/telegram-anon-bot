@@ -31,6 +31,12 @@ async def message_handler(client, message: types.Message):
             )
         else:
             await manager.chat(chat_id, reciever_id, message.id)
+            if not await manager.is_chatting(reciever_id):
+                _, message_len = await manager.get_inbox_len(reciever_id)
+                await app.send_message(
+                    reciever_id,
+                    f"شما {message_len} پیام خوانده نشده در صندوق پیام‌ها دارید."
+                )
     else:
         await app.send_message(chat_id, "در حال مکالمه نیستی", reply_to_message_id=message.id)
 
@@ -50,6 +56,10 @@ https://t.me/TruAnonBot?start=chat-{await manager.hash(chat_id)}""",
         reciever_id = message.text[12:]
         reciever_id = await manager.unhash(reciever_id)
         if reciever_id is None:
+            await app.send_message(
+                chat_id,
+                f"لینک نامعتبر است.",
+                reply_to_message_id=message.id)
             return
         if reciever_id == chat_id:
             await app.send_message(
@@ -198,7 +208,7 @@ async def inbox_handler(client, message: types.Message):
 @app.on_callback_query(filters.regex(r'^inbox'))
 async def inbox_callback_handler(client, query: types.CallbackQuery):
     chat_id = query.message.chat.id
-    sender_len, message_len = await manager.get_inbox_len(chat_id)
+    sender_len, _ = await manager.get_inbox_len(chat_id)
     if sender_len == 0:
         await app.send_message(
             chat_id,
