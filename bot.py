@@ -215,4 +215,6 @@ async def inbox_callback_handler(client, query: types.CallbackQuery):
         )
 
 
+app.run(manager.load())
 app.run()
+app.run(manager.save())
