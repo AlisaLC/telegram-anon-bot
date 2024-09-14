@@ -88,12 +88,36 @@ async def end_handler(client, message: types.Message):
             reply_to_message_id=message.id,
         )
         return
+    reciever_id = await manager.get_reciever_id(chat_id)
     await manager.end_chat(chat_id)
     await app.send_message(
         chat_id,
         "مکالمه پایان یافت.",
         reply_to_message_id=message.id,
+        reply_markup=types.InlineKeyboardMarkup(
+            [
+                [
+                    types.InlineKeyboardButton(
+                        "ادامه مکالمه",
+                        callback_data=f'chat-{await manager.hash(reciever_id)}'
+                    )
+                ],
+            ]
+        )
     )
+
+@app.on_callback_query(filters.regex(r'^chat-.+$'))
+async def chat_callback_handler(client, query: types.CallbackQuery):
+    chat_id = query.message.chat.id
+    receiver_id = await manager.unhash(query.data[5:])
+    if receiver_id is None:
+        return
+    await manager.start_chat(chat_id, receiver_id)
+    await app.edit_message_reply_markup(
+        chat_id,
+        query.messagess.id,
+    )
+    await query.answer("مکالمه ادامه یافت")
 
 
 @app.on_message(filters.private & filters.command('block'))
