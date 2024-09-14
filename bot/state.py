@@ -95,7 +95,7 @@ class StateManager:
             if inbox_count:
                 pipeline = self.redis_client.pipeline()
                 for sender_id in inbox_members:
-                    pipeline.llen(f'inbox:{reciever_id}:{sender_id}')
+                    pipeline.llen(f'inbox:{reciever_id}:{int(sender_id)}')
                 message_count = sum(pipeline.execute())
             return inbox_count, message_count
 
