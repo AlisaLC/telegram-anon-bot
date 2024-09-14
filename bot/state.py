@@ -36,6 +36,9 @@ class StateManager:
                 self.chat_state = json.load(f)
                 pipe = self.redis_client.pipeline()
                 for chat, state in self.chat_state.items():
+                    if state is None:
+                        pipe.set(f'state:{chat}', -1)
+                        continue
                     pipe.set(f'state:{chat}', state)
                 pipe.execute()
         if pathlib.Path('blocks.json').exists():
