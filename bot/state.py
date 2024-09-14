@@ -23,7 +23,7 @@ class StateManager:
         if result is None:
             return None
         return int(result)
-    
+
     def _set_chat_state(self, chat_id, reciever_id, pipeline=None) -> None:
         if pipeline is None:
             pipeline = self.redis_client
@@ -33,7 +33,7 @@ class StateManager:
         if pipeline is None:
             pipeline = self.redis_client
         pipeline.delete(f'state:{chat_id}')
-    
+
     async def save(self) -> None:
         with open('salt.secret', 'wb') as f:
             f.write(self.salt)
@@ -106,7 +106,8 @@ class StateManager:
             if self.redis_client.scard(f'inbox:{reciever_id}') == 0:
                 return None, []
             sender_id = int(self.redis_client.spop(f'inbox:{reciever_id}'))
-            messages = [int(message) for message in self.redis_client.lrange(f'inbox:{reciever_id}:{sender_id}', 0, -1)]
+            messages = [int(message) for message in self.redis_client.lrange(
+                f'inbox:{reciever_id}:{sender_id}', 0, -1)]
             self.redis_client.delete(f'inbox:{reciever_id}:{sender_id}')
             return sender_id, messages
 

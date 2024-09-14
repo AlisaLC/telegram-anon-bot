@@ -126,6 +126,7 @@ async def end_handler(client, message: types.Message):
         )
     )
 
+
 @app.on_callback_query(filters.regex(r'^chat-.+$'))
 async def chat_callback_handler(client, query: types.CallbackQuery):
     chat_id = query.message.chat.id
