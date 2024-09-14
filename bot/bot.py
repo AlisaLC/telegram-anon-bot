@@ -1,5 +1,6 @@
 from state import StateManager
 from pyrogram import Client, filters, types
+from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 import redis
 import os
 
@@ -25,6 +26,23 @@ manager = StateManager(redis_client)
 @app.on_message(filters.private & ~filters.regex(r'^/\w+'))
 async def message_handler(client, message: types.Message):
     chat_id = message.chat.id
+    try:
+        await app.get_chat_member(bot_channel_id, chat_id)
+    except UserNotParticipant:
+        await app.send_message(
+            chat_id,
+            f"برای استفاده از بات گم‌نام نیاز است در کانال پشتیبانی عضو باشید تا از آخرین تغییرات مطلع شوید.",
+            reply_markup=types.InlineKeyboardMarkup(
+            [
+                [
+                    types.InlineKeyboardButton(
+                        "عضویت",
+                        url=f'https://t.me/{bot_channel_id}',
+                    )
+                ],
+            ]
+        )
+        )
     if await manager.is_chatting(chat_id):
         reciever_id = await manager.get_reciever_id(chat_id)
         if await manager.is_chatting(reciever_id) and await manager.get_reciever_id(reciever_id) == chat_id:
