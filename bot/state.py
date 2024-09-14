@@ -18,56 +18,27 @@ class StateManager:
         self.hash_index: dict[str, int] = {}
         self.salt: bytes = None
 
-    def _get_chat_state(self, chat_id):
+    def _get_chat_state(self, chat_id) -> Union[int, None]:
         result = self.redis_client.get(f'state:{chat_id}')
         if result is None:
             return None
         return int(result)
     
-    def _set_chat_state(self, chat_id, reciever_id):
-        self.redis_client.set(f'state:{chat_id}', str(reciever_id))
+    def _set_chat_state(self, chat_id, reciever_id, pipeline=None) -> None:
+        if pipeline is None:
+            pipeline = self.redis_client
+        pipeline.set(f'state:{chat_id}', str(reciever_id))
 
-    def _delete_chat_state(self, chat_id):
-        self.redis_client.delete(f'state:{chat_id}')
+    def _delete_chat_state(self, chat_id, pipeline=None) -> None:
+        if pipeline is None:
+            pipeline = self.redis_client
+        pipeline.delete(f'state:{chat_id}')
     
-    async def save(self):
+    async def save(self) -> None:
         with open('salt.secret', 'wb') as f:
             f.write(self.salt)
 
-    async def load(self):
-        if pathlib.Path('states.json').exists():
-            with open('states.json', 'r', encoding='utf-8') as f:
-                self.chat_state = json.load(f)
-                pipe = self.redis_client.pipeline()
-                for chat, state in self.chat_state.items():
-                    if state is None:
-                        pipe.set(f'state:{chat}', '-1')
-                        continue
-                    pipe.set(f'state:{chat}', str(state))
-                pipe.execute()
-        if pathlib.Path('blocks.json').exists():
-            with open('blocks.json', 'r', encoding='utf-8') as f:
-                self.block_list = json.load(f)
-                pipe = self.redis_client.pipeline()
-                for chat, blocks in self.block_list.items():
-                    pipe.sadd(f'block:{chat}', *[str(chat_id) for chat_id in blocks])
-                pipe.execute()
-        if pathlib.Path('inbox.json').exists():
-            with open('inbox.json', 'r', encoding='utf-8') as f:
-                self.inbox = json.load(f)
-                pipe = self.redis_client.pipeline()
-                for chat, inbox in self.inbox.items():
-                    pipe.sadd(f'inbox:{chat}', *[str(chat_id) for chat_id in inbox.keys()])
-                    for sender, messages in inbox.items():
-                        pipe.rpush(f'inbox:{chat}:{sender}', *[str(message_id) for message_id in messages])
-                pipe.execute()
-        if pathlib.Path('hashes.json').exists():
-            with open('hashes.json', 'r', encoding='utf-8') as f:
-                self.hash_index = json.load(f)
-                pipe = self.redis_client.pipeline()
-                for hash, chat_id in self.hash_index.items():
-                    pipe.set(f'hash:{hash}', str(chat_id))
-                pipe.execute()
+    async def load(self) -> None:
         if pathlib.Path('salt.secret').exists():
             with open('salt.secret', 'rb') as f:
                 self.salt = f.read()
@@ -91,9 +62,7 @@ class StateManager:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
-            if reciever_id not in self.block_list:
-                self.block_list[reciever_id] = set()
-            self.block_list[reciever_id].add(sender_id)
+            self.redis_client.sadd(f'block:{reciever_id}', str(sender_id))
             self._delete_chat_state(reciever_id)
             # no locking to avoid deadlocks
             if self._get_chat_state(sender_id) == reciever_id:
@@ -103,41 +72,42 @@ class StateManager:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
-            if reciever_id not in self.block_list:
-                return
-            self.block_list[reciever_id].remove(sender_id)
-            if len(self.block_list[reciever_id]) == 0:
-                del self.block_list[reciever_id]
+            self.redis_client.srem(f'block:{reciever_id}', str(sender_id))
 
     async def chat(self, sender_id: int, reciever_id: int, message_id: int) -> None:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
-            if reciever_id not in self.inbox:
-                self.inbox[reciever_id] = {}
-            if sender_id not in self.inbox[reciever_id]:
-                self.inbox[reciever_id][sender_id] = []
-            self.inbox[reciever_id][sender_id].append(message_id)
+            pipeline = self.redis_client.pipeline()
+            pipeline.sadd(f'inbox:{reciever_id}', str(sender_id))
+            pipeline.rpush(f'inbox:{reciever_id}:{sender_id}', str(message_id))
+            pipeline.execute()
 
     async def get_inbox_len(self, reciever_id: int) -> tuple[int, int]:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
-            if reciever_id not in self.inbox:
-                return 0, 0
-            return len(self.inbox[reciever_id]), sum(len(self.inbox[reciever_id][sender_id]) for sender_id in self.inbox[reciever_id])
+            pipeline = self.redis_client.pipeline()
+            pipeline.scard(f'inbox:{reciever_id}')
+            self.redis_client.smembers(f'inbox:{reciever_id}')
+            inbox_count, inbox_members = pipeline.execute()
+            message_count = 0
+            if inbox_count:
+                pipeline = self.redis_client.pipeline()
+                for sender_id in inbox_members:
+                    pipeline.llen(f'inbox:{reciever_id}:{sender_id}')
+                message_count = sum(pipeline.execute())
+            return inbox_count, message_count
 
     async def get_inbox(self, reciever_id: int) -> tuple[Union[int, None], list[int]]:
         if reciever_id not in self.chat_locks:
             self.chat_locks[reciever_id] = Lock()
         async with self.chat_locks[reciever_id]:
-            if reciever_id not in self.inbox:
+            if self.redis_client.scard(f'inbox:{reciever_id}') == 0:
                 return None, []
-            sender_id = list(self.inbox[reciever_id].keys())[0]
-            messages = self.inbox[reciever_id][sender_id]
-            del self.inbox[reciever_id][sender_id]
-            if len(self.inbox[reciever_id].keys()) == 0:
-                del self.inbox[reciever_id]
+            sender_id = int(self.redis_client.spop(f'inbox:{reciever_id}'))
+            messages = [int(message) for message in self.redis_client.lrange(f'inbox:{reciever_id}:{sender_id}', 0, -1)]
+            self.redis_client.delete(f'inbox:{reciever_id}:{sender_id}')
             return sender_id, messages
 
     async def is_chatting(self, sender_id: int) -> bool:
