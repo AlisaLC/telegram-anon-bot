@@ -31,7 +31,7 @@ async def message_handler(client, message: types.Message):
     except UserNotParticipant:
         await app.send_message(
             chat_id,
-            f"برای استفاده از بات گم‌نام نیاز است در کانال پشتیبانی عضو باشید تا از آخرین تغییرات مطلع شوید.",
+            f"برای استفاده از بات نیاز است در کانال پشتیبانی عضو باشید تا از آخرین تغییرات مطلع شوید.",
             reply_markup=types.InlineKeyboardMarkup(
                 [
                     [
