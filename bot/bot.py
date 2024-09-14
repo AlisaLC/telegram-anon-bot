@@ -33,16 +33,17 @@ async def message_handler(client, message: types.Message):
             chat_id,
             f"برای استفاده از بات گم‌نام نیاز است در کانال پشتیبانی عضو باشید تا از آخرین تغییرات مطلع شوید.",
             reply_markup=types.InlineKeyboardMarkup(
-            [
                 [
-                    types.InlineKeyboardButton(
-                        "عضویت",
-                        url=f'https://t.me/{bot_channel_id}',
-                    )
-                ],
-            ]
+                    [
+                        types.InlineKeyboardButton(
+                            "عضویت",
+                            url=f'https://t.me/{bot_channel_id}',
+                        )
+                    ],
+                ]
+            )
         )
-        )
+        return
     if await manager.is_chatting(chat_id):
         reciever_id = await manager.get_reciever_id(chat_id)
         if await manager.is_chatting(reciever_id) and await manager.get_reciever_id(reciever_id) == chat_id:
