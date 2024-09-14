@@ -1,8 +1,7 @@
 from state import StateManager
 from pyrogram import Client, filters, types
-from dotenv import load_dotenv
+import redis
 import os
-load_dotenv()
 
 api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
@@ -15,7 +14,11 @@ app = Client(
     bot_token=bot_token,
 )
 
-manager = StateManager()
+redis_host = os.getenv('REDIS_HOST', 'redis')
+redis_port = int(os.getenv('REDIS_PORT', 6379))
+redis_client = redis.Redis(host=redis_host, port=redis_port)
+
+manager = StateManager(redis_client)
 
 
 @app.on_message(filters.private & ~filters.regex(r'^/\w+'))

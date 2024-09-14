@@ -5,10 +5,12 @@ import json
 import os
 import pathlib
 from typing import Union
+import redis
 
 
 class StateManager:
-    def __init__(self) -> None:
+    def __init__(self, redis_client: redis.Redis) -> None:
+        self.redis_client = redis_client
         self.chat_locks: dict[int, Lock] = {}
         self.chat_state: dict[int, int] = {}
         self.block_list: dict[int, set[int]] = {}
@@ -32,15 +34,33 @@ class StateManager:
         if pathlib.Path('states.json').exists():
             with open('states.json', 'r', encoding='utf-8') as f:
                 self.chat_state = json.load(f)
+                pipe = self.redis_client.pipeline()
+                for chat, state in self.chat_state.items():
+                    pipe.set(f'state:{chat}', state)
+                pipe.execute()
         if pathlib.Path('blocks.json').exists():
             with open('blocks.json', 'r', encoding='utf-8') as f:
                 self.block_list = json.load(f)
+                pipe = self.redis_client.pipeline()
+                for chat, blocks in self.block_list.items():
+                    pipe.sadd(f'block:{chat}', *blocks)
+                pipe.execute()
         if pathlib.Path('inbox.json').exists():
             with open('inbox.json', 'r', encoding='utf-8') as f:
                 self.inbox = json.load(f)
+                pipe = self.redis_client.pipeline()
+                for chat, inbox in self.inbox.items():
+                    pipe.sadd(f'inbox:{chat}', inbox.keys())
+                    for sender, messages in inbox.items():
+                        pipe.rpush(f'inbox:{chat}:{sender}', *messages)
+                pipe.execute()
         if pathlib.Path('hashes.json').exists():
             with open('hashes.json', 'r', encoding='utf-8') as f:
                 self.hash_index = json.load(f)
+                pipe = self.redis_client.pipeline()
+                for hash, chat_id in self.hash_index.items():
+                    pipe.set(f'hash:{hash}', chat_id)
+                pipe.execute()
         if pathlib.Path('salt.secret').exists():
             with open('salt.secret', 'rb') as f:
                 self.salt = f.read()
@@ -51,11 +71,11 @@ class StateManager:
         input_bytes = str(chat_id).encode() + self.salt
         hashed = hashlib.sha256(input_bytes).digest()
         encoded_string = base64.urlsafe_b64encode(hashed).decode('utf-8')[:20]
-        self.hash_index[encoded_string] = chat_id
+        self.redis_client.set(f'hash:{encoded_string}', chat_id)
         return encoded_string
 
     async def unhash(self, hashed: str) -> Union[int, None]:
-        return self.hash_index.get(hashed)
+        return self.redis_client.get(f'hash:{hashed}')
 
     async def block(self, reciever_id: int, sender_id: int) -> None:
         if reciever_id not in self.chat_locks:
