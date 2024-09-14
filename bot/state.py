@@ -53,7 +53,7 @@ class StateManager:
                 self.inbox = json.load(f)
                 pipe = self.redis_client.pipeline()
                 for chat, inbox in self.inbox.items():
-                    pipe.sadd(f'inbox:{chat}', inbox.keys())
+                    pipe.sadd(f'inbox:{chat}', *inbox.keys())
                     for sender, messages in inbox.items():
                         pipe.rpush(f'inbox:{chat}:{sender}', *messages)
                 pipe.execute()
