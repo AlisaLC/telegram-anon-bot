@@ -89,7 +89,7 @@ class StateManager:
         async with self.chat_locks[reciever_id]:
             pipeline = self.redis_client.pipeline()
             pipeline.scard(f'inbox:{reciever_id}')
-            self.redis_client.smembers(f'inbox:{reciever_id}')
+            pipeline.smembers(f'inbox:{reciever_id}')
             inbox_count, inbox_members = pipeline.execute()
             message_count = 0
             if inbox_count:
