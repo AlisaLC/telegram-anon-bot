@@ -115,7 +115,7 @@ async def chat_callback_handler(client, query: types.CallbackQuery):
     await manager.start_chat(chat_id, receiver_id)
     await app.edit_message_reply_markup(
         chat_id,
-        query.messagess.id,
+        query.message.id,
     )
     await query.answer("مکالمه ادامه یافت")
 
